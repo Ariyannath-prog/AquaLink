@@ -8,12 +8,14 @@ import json
 import re
 import struct
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 
 GLB_FILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.glb$", re.IGNORECASE)
 DRIVE_ID = re.compile(r"^[a-zA-Z0-9_-]{20,}$")
+DOWNLOAD_ATTEMPTS = 3
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,13 +104,33 @@ def download_models(models: list[dict[str, str]], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for model in models:
         output_path = output_dir / model["file"]
+        temporary_path = output_dir / f".{model['file']}.part"
         source_url = f"https://drive.google.com/file/d/{model['driveId']}/view?usp=sharing"
         print(f"Downloading {model['label']}…")
-        result = gdown.download(source_url, str(output_path), quiet=False, fuzzy=True)
-        if result is None:
-            raise RuntimeError(f"Google Drive did not download {model['label']}.")
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            temporary_path.unlink(missing_ok=True)
+            try:
+                result = gdown.download(source_url, str(temporary_path), quiet=False, fuzzy=True)
+                if result is None:
+                    raise RuntimeError(f"Google Drive did not download {model['label']}.")
 
-        size = validate_glb(output_path)
+                size = validate_glb(temporary_path)
+                temporary_path.replace(output_path)
+                break
+            except Exception as error:
+                temporary_path.unlink(missing_ok=True)
+                if attempt == DOWNLOAD_ATTEMPTS:
+                    raise RuntimeError(
+                        f"Could not download {model['label']} after {DOWNLOAD_ATTEMPTS} attempts."
+                    ) from error
+                delay_seconds = 2 ** (attempt - 1)
+                print(
+                    f"Download attempt {attempt} for {model['label']} failed; "
+                    f"retrying in {delay_seconds}s…",
+                    file=sys.stderr,
+                )
+                time.sleep(delay_seconds)
+
         print(f"Validated {output_path} ({size / 1024 / 1024:.1f} MiB)")
 
 

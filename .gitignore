@@ -1,3 +1,5 @@
 # Large binary models are fetched from Google Drive for local previews and Pages deploys.
 /models/*.glb
 /_site/
+/dist/
+__pycache__/

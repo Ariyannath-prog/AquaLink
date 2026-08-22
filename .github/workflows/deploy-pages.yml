@@ -34,13 +34,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Install the Google Drive downloader
-        run: python -m pip install --disable-pip-version-check --no-cache-dir "gdown==5.2.0"
+        run: python -m pip install --disable-pip-version-check --no-cache-dir -r requirements.txt
 
       - name: Build the static site and fetch GLB assets
-        run: |
-          mkdir -p _site
-          cp index.html models.json _site/
-          python scripts/download_models.py --output-dir _site/models
+        run: python scripts/build_site.py --output-dir _site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

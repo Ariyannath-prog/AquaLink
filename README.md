@@ -1,20 +1,31 @@
 # AquaLink 3D Model Viewer
 
-An interactive, static Three.js viewer for the AquaLink GLB models. It is designed to deploy on GitHub Pages without committing the large model binaries to Git.
+An interactive, static Three.js viewer for AquaLink GLB models. It deploys as a small HTML application plus same-origin model assets, without committing the large binaries to Git.
 
-## How the Google Drive models are published
+## Model delivery architecture
 
-The model IDs live in [models.json](models.json). The site does **not** load `drive.google.com` URLs directly in the browser: Drive's direct-download endpoint rejects cross-origin browser requests, so a Three.js loader can fail even when a person can open the public sharing link.
+[models.json](models.json) is the source manifest. Google Drive is used only during a deployment build; the browser never loads a Drive download URL directly. The shared build script:
 
-Instead, [the Pages workflow](.github/workflows/deploy-pages.yml) downloads the public `Anyone with the link` files from Drive while GitHub builds the site, validates that each result is a complete GLB 2.0 file, and publishes the files at `models/*.glb` beside the viewer. The final browser request is same-origin, which makes the models visible and interactive on GitHub Pages.
+1. Downloads each public `Anyone with the link → Viewer` Drive file.
+2. Validates that it is a complete GLB 2.0 binary.
+3. Adds a content hash to its deployed filename.
+4. Produces a minimal static artifact containing only `index.html`, `models.json`, and `models/*.glb`.
 
-Keep every Drive file set to **Anyone with the link → Viewer** and leave downloading enabled. If a file changes, update its Drive ID or filename in `models.json` and push to `main`.
+The viewer therefore requests same-origin assets on either Vercel or GitHub Pages. Content-hashed model URLs may be cached for a year without serving stale models after a Drive file is replaced.
+
+Keep Drive downloading enabled. A failed download, quota issue, or invalid file fails the deployment rather than publishing an HTML error page as a model.
 
 ## Deploy to Vercel
 
-Import the repository into Vercel and leave the framework preset as **Other**. The included [vercel.json](vercel.json) downloads and validates the public Drive models during each build, then deploys them as same-origin static assets. No environment variables are required.
+1. Push the latest commit to the branch connected to Vercel.
+2. Import the repository with the project root set to this repository. `vercel.json` explicitly selects the static/Other preset, runs the build, and deploys `dist/`.
+3. Do not override the build command or output directory in the dashboard. No environment variables are required.
 
-Because model files are cached for one year, changing a model requires changing its filename in `models.json` before redeploying so browsers and Vercel do not reuse the old asset.
+The Vercel build log should end with `Built ... with 7 validated models`. The deployment exposes only the contents of `dist/`, so source scripts and workflow files do not become public static files.
+
+Vercel caches each fingerprinted GLB for one year and revalidates `models.json` on every visit. On the next deployment, a changed model gets a new URL automatically; you do not need to rename `file` in the source manifest.
+
+The current model set is about 572 MiB in total, so each build downloads a substantial amount of data. This is suitable as a short-term Drive ingestion path. For a high-traffic production deployment, compress the models (Draco/Meshopt and texture compression) and move them to a dedicated object store/CDN such as Vercel Blob, R2, or S3.
 
 ## Deploy to GitHub Pages
 
@@ -23,27 +34,27 @@ Because model files are cached for one year, changing a model requires changing 
 3. Open the **Actions** tab and wait for **Deploy AquaLink to GitHub Pages** to finish.
 4. Open the URL shown by that workflow.
 
-The deployed site contains the model bytes, so check that the combined asset size fits your GitHub Pages limits before adding more large models. The workflow fails instead of publishing an HTML error page as a model if Drive access, download quota, or a model file is invalid.
+The workflow invokes the same static builder as Vercel, so it has the same same-origin asset behavior and validation.
 
 ## Local preview
 
-Download the models once (they are ignored by Git), then serve the project over HTTP:
+Build the deployable artifact, then serve it over HTTP:
 
 ```sh
-python3 -m pip install "gdown==5.2.0"
-python3 scripts/download_models.py
-python3 -m http.server 4173
+python3 -m pip install -r requirements.txt
+python3 scripts/build_site.py
+python3 -m http.server 4173 --directory dist
 ```
 
 Open `http://localhost:4173/`. Drag to orbit, scroll or pinch to zoom, double-click to reframe, and use the controls for wireframe and auto-rotation.
 
 ## Model configuration
 
-`models.json` is the single configuration list for the viewer and deployment downloader. Each item needs:
+`models.json` is the source configuration list for the viewer and deployment downloader. Each item needs:
 
 - `name`: a stable UI identifier
 - `label`: the button label
-- `file`: the emitted same-origin `.glb` filename
+- `file`: a stable source `.glb` filename; the build appends the deployed content hash
 - `driveId`: the ID from the public Google Drive sharing URL
 
 Use filenames containing only letters, numbers, hyphens, and the `.glb` extension.

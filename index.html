@@ -448,7 +448,7 @@
       statusEl.replaceChildren(
         `Couldn’t load ${model.label}. `,
         driveLink,
-        ". The GitHub Pages deployment may still be building."
+        ". The deployed model asset may still be building or is unavailable."
       );
     }
 
@@ -621,7 +621,7 @@
         loadModel(models[0]);
       } catch (error) {
         console.error("Unable to initialize models", error);
-        setStatus("Couldn’t read the model catalogue. Check the Pages deployment.", "error");
+        setStatus("Couldn’t read the model catalogue. Check this deployment.", "error");
       }
     }
 
