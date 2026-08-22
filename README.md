@@ -10,6 +10,12 @@ Instead, [the Pages workflow](.github/workflows/deploy-pages.yml) downloads the 
 
 Keep every Drive file set to **Anyone with the link → Viewer** and leave downloading enabled. If a file changes, update its Drive ID or filename in `models.json` and push to `main`.
 
+## Deploy to Vercel
+
+Import the repository into Vercel and leave the framework preset as **Other**. The included [vercel.json](vercel.json) downloads and validates the public Drive models during each build, then deploys them as same-origin static assets. No environment variables are required.
+
+Because model files are cached for one year, changing a model requires changing its filename in `models.json` before redeploying so browsers and Vercel do not reuse the old asset.
+
 ## Deploy to GitHub Pages
 
 1. Push this project to the `main` branch of its GitHub repository.
