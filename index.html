@@ -381,14 +381,18 @@
     let autoRotate = false;
     const loader = new GLTFLoader();
 
+    function googleDriveDownloadUrl(fileId) {
+      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    }
+
     const models = [
-      { name: "full_model", label: "Full Model", file: "./full_model.glb" },
-      { name: "arduino", label: "Arduino", file: "./arduino.glb" },
-      { name: "battery", label: "Battery", file: "./battery.glb" },
-      { name: "camera", label: "Camera", file: "./camera.glb" },
-      { name: "esp", label: "ESP", file: "./esp.glb" },
-      { name: "gyro", label: "Gyro", file: "./gyro.glb" },
-      { name: "motor", label: "Motor", file: "./motor.glb" },
+      { name: "full_model", label: "Full Model", file: googleDriveDownloadUrl("1MgQh9cWVtqwZEJX-R980wb-Y798l69u3") },
+      { name: "motor", label: "Motor", file: googleDriveDownloadUrl("1QgEW_J9SmamH1gVHrTwl5VPzi_0xJHcA") },
+      { name: "arduino", label: "Arduino", file: googleDriveDownloadUrl("1KaN2FJzAaNhVxnxNZabdZxsXVKBx5PVk") },
+      { name: "esp", label: "ESP", file: googleDriveDownloadUrl("1mZB0Ytc6cw0P5H8GY9jrwf8g9hIONPSg") },
+      { name: "gyro", label: "Gyro", file: googleDriveDownloadUrl("19LonJzeLSk6xQuZ0j0P6yJ9aW5gCxVnh") },
+      { name: "battery", label: "Battery", file: googleDriveDownloadUrl("12qp1yCUAvR7xBpkAoEXEpdMpz0-FF9Rd") },
+      { name: "camera", label: "Camera", file: googleDriveDownloadUrl("1mxMkVuadNURHcXzjtW6UgZxIXjjh21nM") },
     ];
 
     let currentModelName = null;
@@ -545,7 +549,7 @@
     animate();
 
     initializeModelGrid();
-    loadGLB("./full_model.glb", "Full Model");
+    loadGLB(models[0].file, models[0].label);
   </script>
 </body>
 </html>

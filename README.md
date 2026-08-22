@@ -1,6 +1,12 @@
 # 3D GLB Model Viewer
 
-A static Three.js viewer for the included GLB models. It can be hosted directly on GitHub Pages without a build step.
+A static Three.js viewer for GLB models shared from Google Drive. It can be hosted directly on GitHub Pages without a build step.
+
+## Google Drive models
+
+The viewer uses each file's Google Drive ID to create a direct download URL. Every model must be shared as **Anyone with the link > Viewer**. The shared link itself is not used as the loader URL because it opens Google's HTML preview page instead of returning the GLB bytes.
+
+Google Drive may show a confirmation page for very large or flagged files. If that happens, host those files on a static asset host such as GitHub Releases, Cloudflare R2, or an object-storage bucket instead.
 
 ## GitHub Pages
 
