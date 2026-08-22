@@ -1,28 +1,43 @@
-# 3D GLB Model Viewer
+# AquaLink 3D Model Viewer
 
-A static Three.js viewer for GLB models shared from Google Drive. It can be hosted directly on GitHub Pages without a build step.
+An interactive, static Three.js viewer for the AquaLink GLB models. It is designed to deploy on GitHub Pages without committing the large model binaries to Git.
 
-## Google Drive models
+## How the Google Drive models are published
 
-The viewer uses each file's Google Drive ID to create a direct download URL. Every model must be shared as **Anyone with the link > Viewer**. The shared link itself is not used as the loader URL because it opens Google's HTML preview page instead of returning the GLB bytes.
+The model IDs live in [models.json](models.json). The site does **not** load `drive.google.com` URLs directly in the browser: Drive's direct-download endpoint rejects cross-origin browser requests, so a Three.js loader can fail even when a person can open the public sharing link.
 
-Google Drive may show a confirmation page for very large or flagged files. If that happens, host those files on a static asset host such as GitHub Releases, Cloudflare R2, or an object-storage bucket instead.
+Instead, [the Pages workflow](.github/workflows/deploy-pages.yml) downloads the public `Anyone with the link` files from Drive while GitHub builds the site, validates that each result is a complete GLB 2.0 file, and publishes the files at `models/*.glb` beside the viewer. The final browser request is same-origin, which makes the models visible and interactive on GitHub Pages.
 
-## GitHub Pages
+Keep every Drive file set to **Anyone with the link → Viewer** and leave downloading enabled. If a file changes, update its Drive ID or filename in `models.json` and push to `main`.
 
-1. Push this folder to a GitHub repository.
-2. Open **Settings > Pages**.
-3. Under **Build and deployment**, choose **Deploy from a branch**.
-4. Select the branch containing `index.html` and the `/ (root)` folder, then save.
+## Deploy to GitHub Pages
 
-The viewer uses relative model paths, so it works for both user sites and project sites such as `https://username.github.io/repository-name/`.
+1. Push this project to the `main` branch of its GitHub repository.
+2. In **Settings → Pages**, set **Build and deployment → Source** to **GitHub Actions**.
+3. Open the **Actions** tab and wait for **Deploy AquaLink to GitHub Pages** to finish.
+4. Open the URL shown by that workflow.
+
+The deployed site contains the model bytes, so check that the combined asset size fits your GitHub Pages limits before adding more large models. The workflow fails instead of publishing an HTML error page as a model if Drive access, download quota, or a model file is invalid.
 
 ## Local preview
 
-Because browser modules and GLB files are loaded over HTTP, preview with a local server:
+Download the models once (they are ignored by Git), then serve the project over HTTP:
 
 ```sh
+python3 -m pip install "gdown==5.2.0"
+python3 scripts/download_models.py
 python3 -m http.server 4173
 ```
 
-Then open `http://localhost:4173/`.
+Open `http://localhost:4173/`. Drag to orbit, scroll or pinch to zoom, double-click to reframe, and use the controls for wireframe and auto-rotation.
+
+## Model configuration
+
+`models.json` is the single configuration list for the viewer and deployment downloader. Each item needs:
+
+- `name`: a stable UI identifier
+- `label`: the button label
+- `file`: the emitted same-origin `.glb` filename
+- `driveId`: the ID from the public Google Drive sharing URL
+
+Use filenames containing only letters, numbers, hyphens, and the `.glb` extension.

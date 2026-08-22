@@ -1,0 +1,44 @@
+[
+  {
+    "name": "full-model",
+    "label": "Full Model",
+    "file": "full-model.glb",
+    "driveId": "1MgQh9cWVtqwZEJX-R980wb-Y798l69u3"
+  },
+  {
+    "name": "motor",
+    "label": "Motor",
+    "file": "motor.glb",
+    "driveId": "1QgEW_J9SmamH1gVHrTwl5VPzi_0xJHcA"
+  },
+  {
+    "name": "arduino",
+    "label": "Arduino",
+    "file": "arduino.glb",
+    "driveId": "1KaN2FJzAaNhVxnxNZabdZxsXVKBx5PVk"
+  },
+  {
+    "name": "esp32",
+    "label": "ESP32",
+    "file": "esp32.glb",
+    "driveId": "1mZB0Ytc6cw0P5H8GY9jrwf8g9hIONPSg"
+  },
+  {
+    "name": "gyro",
+    "label": "Gyro",
+    "file": "gyro.glb",
+    "driveId": "19LonJzeLSk6xQuZ0j0P6yJ9aW5gCxVnh"
+  },
+  {
+    "name": "battery",
+    "label": "Battery",
+    "file": "battery.glb",
+    "driveId": "12qp1yCUAvR7xBpkAoEXEpdMpz0-FF9Rd"
+  },
+  {
+    "name": "camera",
+    "label": "Camera",
+    "file": "camera.glb",
+    "driveId": "1mxMkVuadNURHcXzjtW6UgZxIXjjh21nM"
+  }
+]

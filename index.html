@@ -92,6 +92,11 @@
       border-color: rgba(255, 255, 255, 0.2);
     }
 
+    button:focus-visible {
+      outline: 2px solid #93c5fd;
+      outline-offset: 2px;
+    }
+
     button.active {
       background: #3b82f6;
       border-color: #3b82f6;
@@ -116,6 +121,12 @@
 
     .status.success {
       color: #4ade80;
+    }
+
+    .status a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     .spinner {
@@ -306,19 +317,24 @@
 
   <div id="ui">
     <div class="panel">
-      <h1>3D Model Viewer</h1>
+      <h1>AquaLink 3D Viewer</h1>
       <div class="controls">
-        <button id="btn-reset">Reset Camera</button>
-        <button id="btn-wireframe">Wireframe</button>
-        <button id="btn-auto-rotate">Auto Rotate</button>
+        <button id="btn-reset" type="button">Reset Camera</button>
+        <button id="btn-wireframe" type="button" aria-pressed="false">Wireframe</button>
+        <button id="btn-auto-rotate" type="button" aria-pressed="false">Auto Rotate</button>
       </div>
-      <div id="status" class="status">Loading model…</div>
+      <div id="status" class="status" role="status" aria-live="polite">Preparing model viewer…</div>
     </div>
   </div>
 
   <div id="models-panel">
     <h2>Models</h2>
     <div class="models-grid" id="models-grid"></div>
+  </div>
+
+  <div id="help">
+    <strong>Controls</strong><br />
+    Drag to orbit · Scroll or pinch to zoom · Double-click to frame
   </div>
 
   <script type="importmap">
@@ -332,9 +348,11 @@
 
   <script type="module">
     import * as THREE from "three";
+    import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
     import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
     const container = document.getElementById("canvas-container");
     const statusEl = document.getElementById("status");
@@ -377,130 +395,233 @@
     controls.target.set(0, 0.5, 0);
 
     let currentModel = null;
+    let currentModelName = null;
+    let activeRequest = null;
+    let loadVersion = 0;
+    let models = [];
     let wireframe = false;
     let autoRotate = false;
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/");
     const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
+    loader.setMeshoptDecoder(MeshoptDecoder);
 
-    function googleDriveDownloadUrl(fileId) {
-      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    function setStatus(message, type = "") {
+      statusEl.className = `status ${type}`;
+      statusEl.textContent = message;
     }
 
-    const models = [
-      { name: "full_model", label: "Full Model", file: googleDriveDownloadUrl("1MgQh9cWVtqwZEJX-R980wb-Y798l69u3") },
-      { name: "motor", label: "Motor", file: googleDriveDownloadUrl("1QgEW_J9SmamH1gVHrTwl5VPzi_0xJHcA") },
-      { name: "arduino", label: "Arduino", file: googleDriveDownloadUrl("1KaN2FJzAaNhVxnxNZabdZxsXVKBx5PVk") },
-      { name: "esp", label: "ESP", file: googleDriveDownloadUrl("1mZB0Ytc6cw0P5H8GY9jrwf8g9hIONPSg") },
-      { name: "gyro", label: "Gyro", file: googleDriveDownloadUrl("19LonJzeLSk6xQuZ0j0P6yJ9aW5gCxVnh") },
-      { name: "battery", label: "Battery", file: googleDriveDownloadUrl("12qp1yCUAvR7xBpkAoEXEpdMpz0-FF9Rd") },
-      { name: "camera", label: "Camera", file: googleDriveDownloadUrl("1mxMkVuadNURHcXzjtW6UgZxIXjjh21nM") },
-    ];
+    function setLoadingStatus(model, progressEvent) {
+      const loadedMegabytes = progressEvent?.loaded
+        ? ` (${Math.round(progressEvent.loaded / 1024 / 1024)} MB)`
+        : "";
+      const percent = progressEvent?.lengthComputable
+        ? ` ${Math.round((progressEvent.loaded / progressEvent.total) * 100)}%`
+        : "";
 
-    let currentModelName = null;
+      statusEl.className = "status loading";
+      const spinner = document.createElement("span");
+      spinner.className = "spinner";
+      statusEl.replaceChildren(spinner, `Loading ${model.label}${percent}${loadedMegabytes}…`);
+    }
 
-    function setStatus(msg, type = "") {
-      statusEl.className = "status " + type;
-      statusEl.innerHTML = msg;
+    function getDriveViewUrl(model) {
+      return `https://drive.google.com/file/d/${model.driveId}/view?usp=sharing`;
+    }
+
+    function getModelAssetUrl(model) {
+      return new URL(`models/${model.file}`, document.baseURI).href;
+    }
+
+    function showLoadError(model, error) {
+      console.error(`Unable to load ${model.label}`, error);
+      statusEl.className = "status error";
+
+      const driveLink = document.createElement("a");
+      driveLink.href = getDriveViewUrl(model);
+      driveLink.target = "_blank";
+      driveLink.rel = "noopener noreferrer";
+      driveLink.textContent = "Open the original file in Google Drive";
+
+      statusEl.replaceChildren(
+        `Couldn’t load ${model.label}. `,
+        driveLink,
+        ". The GitHub Pages deployment may still be building."
+      );
+    }
+
+    function disposeObject(object) {
+      const geometries = new Set();
+      const materials = new Set();
+      const textures = new Set();
+
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+
+        if (child.geometry && !geometries.has(child.geometry)) {
+          geometries.add(child.geometry);
+          child.geometry.dispose();
+        }
+
+        const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+        childMaterials.filter(Boolean).forEach((material) => {
+          if (materials.has(material)) return;
+          materials.add(material);
+
+          Object.values(material).forEach((value) => {
+            if (value?.isTexture && !textures.has(value)) {
+              textures.add(value);
+              value.dispose();
+            }
+          });
+          material.dispose();
+        });
+      });
     }
 
     function clearModel() {
-      if (currentModel) {
-        scene.remove(currentModel);
-        currentModel.traverse((child) => {
-          if (child.isMesh) {
-            child.geometry?.dispose();
-            if (Array.isArray(child.material)) {
-              child.material.forEach((m) => m.dispose());
-            } else {
-              child.material?.dispose();
-            }
-          }
-        });
-        currentModel = null;
-      }
+      if (!currentModel) return;
+      scene.remove(currentModel);
+      disposeObject(currentModel);
+      currentModel = null;
+    }
+
+    function cancelPendingRequest() {
+      if (activeRequest?.abort) activeRequest.abort();
+      activeRequest = null;
     }
 
     function fitCameraToObject(object) {
       const box = new THREE.Box3().setFromObject(object);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
-
       const maxDim = Math.max(size.x, size.y, size.z);
+
+      if (!Number.isFinite(maxDim) || maxDim <= 0) return;
+
       const fov = camera.fov * (Math.PI / 180);
-      let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-      cameraZ *= 1.6;
+      const cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.6;
 
-      camera.position.set(center.x + cameraZ * 0.6, center.y + cameraZ * 0.4, center.z + cameraZ);
+      camera.position.set(
+        center.x + cameraDistance * 0.6,
+        center.y + cameraDistance * 0.4,
+        center.z + cameraDistance
+      );
       controls.target.copy(center);
-      controls.update();
-
-      camera.near = maxDim / 100;
-      camera.far = maxDim * 100;
+      controls.minDistance = Math.max(maxDim / 100, 0.01);
+      controls.maxDistance = Math.max(cameraDistance * 8, 2);
+      camera.near = Math.max(maxDim / 1000, 0.001);
+      camera.far = Math.max(maxDim * 100, 10);
       camera.updateProjectionMatrix();
+      controls.update();
     }
 
     function applyWireframe(enabled) {
       if (!currentModel) return;
       currentModel.traverse((child) => {
-        if (child.isMesh && child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          mats.forEach((m) => {
-            m.wireframe = enabled;
-          });
-        }
+        if (!child.isMesh || !child.material) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+          material.wireframe = enabled;
+          material.needsUpdate = true;
+        });
       });
     }
 
-    function loadGLB(fileOrUrl, name = "model") {
+    function loadModel(model) {
+      const requestVersion = ++loadVersion;
+      cancelPendingRequest();
       clearModel();
-      currentModelName = Object.values(models).find(m => m.file === fileOrUrl)?.name || name;
-      setStatus(`<span class="spinner"></span>Loading ${name}…`, "loading");
+      currentModelName = model.name;
+      updateModelButtonStates();
+      setLoadingStatus(model);
 
-      const onLoad = (gltf) => {
-        currentModel = gltf.scene;
-        scene.add(currentModel);
+      activeRequest = loader.load(
+        getModelAssetUrl(model),
+        (gltf) => {
+          if (requestVersion !== loadVersion) {
+            disposeObject(gltf.scene);
+            return;
+          }
 
-        const box = new THREE.Box3().setFromObject(currentModel);
-        const center = box.getCenter(new THREE.Vector3());
-        currentModel.position.sub(center);
+          activeRequest = null;
+          currentModel = gltf.scene;
+          scene.add(currentModel);
 
-        fitCameraToObject(currentModel);
-        applyWireframe(wireframe);
+          const box = new THREE.Box3().setFromObject(currentModel);
+          currentModel.position.sub(box.getCenter(new THREE.Vector3()));
+          fitCameraToObject(currentModel);
+          applyWireframe(wireframe);
 
-        setStatus(`Loaded: <strong>${name}</strong>`, "success");
-        updateModelButtonStates();
-      };
-
-      const onError = (err) => {
-        console.error(err);
-        setStatus(`Failed to load model: ${err.message || err}`, "error");
-      };
-
-      if (typeof fileOrUrl === "string") {
-        loader.load(fileOrUrl, onLoad, undefined, onError);
-      }
+          setStatus(`Loaded: ${model.label}`, "success");
+        },
+        (event) => {
+          if (requestVersion === loadVersion) setLoadingStatus(model, event);
+        },
+        (error) => {
+          if (requestVersion !== loadVersion) return;
+          activeRequest = null;
+          showLoadError(model, error);
+        }
+      );
     }
 
     function updateModelButtonStates() {
       document.querySelectorAll(".model-btn").forEach((btn) => {
-        const modelName = btn.dataset.model;
-        btn.classList.toggle("active", modelName === currentModelName);
+        const isActive = btn.dataset.model === currentModelName;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-pressed", String(isActive));
       });
     }
 
     function initializeModelGrid() {
       const grid = document.getElementById("models-grid");
-      grid.innerHTML = "";
+      grid.replaceChildren();
 
       models.forEach((model) => {
         const btn = document.createElement("button");
+        btn.type = "button";
         btn.className = "model-btn";
         btn.textContent = model.label;
         btn.dataset.model = model.name;
-        btn.addEventListener("click", () => {
-          loadGLB(model.file, model.label);
-        });
+        btn.setAttribute("aria-pressed", "false");
+        btn.addEventListener("click", () => loadModel(model));
         grid.appendChild(btn);
       });
+    }
+
+    function validateModelManifest(manifest) {
+      if (!Array.isArray(manifest) || manifest.length === 0) {
+        throw new Error("The model manifest is empty.");
+      }
+
+      return manifest.map((model) => {
+        const isValid =
+          typeof model?.name === "string" &&
+          typeof model.label === "string" &&
+          typeof model.file === "string" &&
+          typeof model.driveId === "string" &&
+          /^[a-z0-9][a-z0-9-]*\.glb$/i.test(model.file) &&
+          /^[a-zA-Z0-9_-]{20,}$/.test(model.driveId);
+
+        if (!isValid) throw new Error("The model manifest contains an invalid entry.");
+        return model;
+      });
+    }
+
+    async function initializeModels() {
+      setStatus("Loading model catalogue…", "loading");
+      try {
+        const response = await fetch(new URL("models.json", document.baseURI));
+        if (!response.ok) throw new Error(`Model manifest returned ${response.status}`);
+        models = validateModelManifest(await response.json());
+        initializeModelGrid();
+        loadModel(models[0]);
+      } catch (error) {
+        console.error("Unable to initialize models", error);
+        setStatus("Couldn’t read the model catalogue. Check the Pages deployment.", "error");
+      }
     }
 
     document.getElementById("btn-reset").addEventListener("click", () => {
@@ -516,6 +637,7 @@
     btnWire.addEventListener("click", () => {
       wireframe = !wireframe;
       btnWire.classList.toggle("active", wireframe);
+      btnWire.setAttribute("aria-pressed", String(wireframe));
       applyWireframe(wireframe);
     });
 
@@ -524,6 +646,7 @@
       autoRotate = !autoRotate;
       controls.autoRotate = autoRotate;
       btnAuto.classList.toggle("active", autoRotate);
+      btnAuto.setAttribute("aria-pressed", String(autoRotate));
     });
 
     renderer.domElement.addEventListener("dblclick", () => {
@@ -548,8 +671,7 @@
     }
     animate();
 
-    initializeModelGrid();
-    loadGLB(models[0].file, models[0].label);
+    initializeModels();
   </script>
 </body>
 </html>
